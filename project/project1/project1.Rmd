@@ -1,8 +1,159 @@
 ---
 title: "Project 1"
-author: "Me"
-date: "2020-12-01"
+author: "Hailey Orton"
+date: "3/31/2021"
 output: html_document
 ---
 
-## Test Project 1
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+#For this project I decided to look at all 50 states and their cancer rates, as well as their levels of uninsurance. I chose this type of data because I'm in a sociology class about cancer this semester, and I find that a lack of healthcare coverage is a huge barrier to recieving proper care. I wanted to see if there was any correlation in cancer occurence and insurance coverage following the implementation of the ACA. I also thought the addition of population size was interesting, and wondered if larger states panned out differently than smaller states in terms of cancer incidence.
+
+```{R}
+library(ggplot2)
+library(tidyverse)
+healthcoverage <- read.csv("states.csv")
+cancercases <- read.csv("USCS_OverviewMap.csv")
+glimpse(healthcoverage)
+```
+
+```{R}
+glimpse(cancercases)
+```
+
+```{R}
+library(dplyr)
+fullprojdata <- inner_join(cancercases, healthcoverage, by="State")
+glimpse(fullprojdata)
+```
+#I decided to complete an inner join because it was the join that would create the most cohesive data set. A full join would have added an extra observation (the United States as one of the "states") that would have several NA variables. I wanted to drop that case, and so I completed an inner join, which dropped the US observation which had come from the insurance dataset. 
+
+```{R}
+falsetidy <- fullprojdata %>% pivot_longer(c("Uninsured.Rate..2010.","Uninsured.Rate..2015."), names_to="UninsuredYear", values_to="PctUninsured")
+```
+
+```{R}
+falsetidy %>% pivot_wider(names_from="UninsuredYear", values_from="PctUninsured")
+```
+#In terms of tidyness, the data was overall pretty tidy. As a result, I decided to complete a false tidy. I first transformed by data longer and created a new variable called Uninsured Year, and made the values the percent uninsured. Then, I retransformed it wider by taking the names from the Uninsured Year variable and the values from percent uninsured. I realized later on that a subset of my data statistics needed to be tidyed since it was extremely wide, but I decided to leave this in here as well just to demostrate the usage of tidying.
+
+```{R}
+fullprojdata %>% filter(Uninsured.Rate..2015. >= .12)
+```
+
+```{R}
+fullprojdata %>% arrange(desc(Population))
+```
+
+```{R}
+fullprojdata %>% select(State, CaseCount, Uninsured.Rate.Change..2010.2015.)
+```
+
+```{R}
+completedata <- fullprojdata %>% mutate(CancerRate = CaseCount/Population)
+```
+
+```{R}
+complete_stats <- completedata %>% summarize_at(6:11, .funs = list(mean = mean, sd = sd, var = var, min = min, max = max, n_distinct = n_distinct))
+
+finaldata <- completedata %>% mutate(rate_cat = case_when(CancerRate>.0055 ~ "high", CancerRate<=.0055 & .0042<=CancerRate ~ "med", CancerRate<.0042 ~ "low"))
+
+complete_stats_grouped <- finaldata %>% group_by(rate_cat) %>% summarize_at(6:12, .funs = list(mean = mean, sd = sd, var = var, min = min, max = max, n_distinct = n_distinct))
+
+tidy.stats <- complete_stats %>% pivot_longer(contains("_"), names_to = "name", values_to = "value") %>% separate(name, c("name", "function"), sep = "_") %>% pivot_wider(names_from = "function", values_from = "value") %>% 
+    glimpse()
+
+```
+
+#At first, I played around with the dplyr functions just to see what I could do. At first for filter, I wanted to filter only the states with an uninsured rate of greater than 15%. Little did I know I'd end up with only Texas (how sad). I decided to change that criteria to states with an uninsured rate of greater than 12%, and that rendered a list of seven states. I then arranged them by population from greatest to least, and then selected the three variables I was most interested in: state, cancer cases, and change in insurance coverage. The original data gave cancer cases as a crude value, so I decided to mutate and create a cancer RATE variable that utilized data from the cancer cases and population variables. This gives a better per capita view of cancer. I also summarized all the data(avg, sd, min, max, var, n_distinct) both before and after the addition of a new variable. For the summary after the addition of the new variable, I grouped the statistics by cancer rate (high, med, low). I had to tidy the summary statistics, as it was extremely wide and hard to look at otherwise.
+
+```{R}
+finaldata %>% select_if(is.numeric) %>% cor %>% as.data.frame %>% rownames_to_column %>% pivot_longer(-1) %>% ggplot(aes(rowname,name,fill=value))+ geom_tile() + geom_text(aes(label=round(value,2)))+xlab("")+ylab("")+coord_fixed()+scale_fill_gradient2(low="blue",mid="white",high="red")+theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+#Though the correlation heat map at first shows signs of a few bright red, extremely correlated variables, further investigation shows they're not groundbreaking correlates. The correlation of Cancer Rate and Age Adjusted Rate is unsurprising, as they are both rates of cancer in each state. The population and case count correlation i unsurprising because naturally as population increases, the overall number of cancer cases will increase. Finally, the correlation between Uninsured Rates in 2010 and 2015 is unsurprising because despite the ACA, insurance rates wwould likely still be similar and fluctuate in similar ways. There does seem to be a weak correlation between uninsured rate in 2015 and cancer rate, which is interesting especially considering it's a negative correlation.
+
+
+```{R}
+plot2 <- ggplot(finaldata, aes(Uninsured.Rate..2015., Population)) + geom_point(aes(color=rate_cat)) +   geom_smooth(method="lm") 
+
+plot2 + ggtitle("Population and Insurance Effect on Cancer") + ylab("Population") + xlab("Uninsured Rate")
+```
+#This scatterplot maps the population in relation to uninsured rate, as well as color coding the cancer rate type (high/med/low). Again, there does not appear to be any strong correlation between the three variable I was initially most interested in. Uninsured rate seems to be all over the map in relation to population. One very weak correlation that could be present is that all three low cancer rate states had higher rates of uninsurance, which is actually quite the opposite of what I expected.
+
+```{R}
+five.states <- finaldata %>% filter(State %in% c("Minnesota", 
+    "Oregon", "Kansas", "North Carolina", "Massachusetts")) %>% 
+    select(State, Uninsured.Rate.Change..2010.2015., Population)
+ggplot(five.states, aes(State, fill = State)) + geom_bar(aes(y = Uninsured.Rate.Change..2010.2015.), 
+    stat = "summary", fun.y = "mean") + scale_y_continuous(breaks = seq(0, -.11, -.01)) + geom_errorbar(aes(y = Uninsured.Rate.Change..2010.2015.), stat = "summary", 
+    width = 0.5) + ylab("Uninsured Coverage Change") + ggtitle("Uninsured Change for 5 States") + 
+    scale_fill_brewer(palette = "DarkMint") + xlab("State")+ theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+#For this graph, I wanted to visualize the change in insurance coverage after the implementation of the ACA. I chose five randomly chosen states to see how the new policy increased their insurance coverage. It seems like the policy overall increased insurance coverage, thus decreasing the uninsured rate.
+
+```{R}
+final.data <- finaldata %>% select(State, Population, Uninsured.Rate..2015., Uninsured.Rate.Change..2010.2015., 
+    CancerRate)
+data.numbers <- final.data %>% select_if(is.numeric) %>% scale
+pca.data <- princomp(data.numbers)
+names(pca.data)
+```
+
+```{R}
+summary(pca.data, loadings = T)
+```
+
+```{R}
+eigval <- pca.data$sdev^2
+varprop = round(eigval/sum(eigval), 2)
+ggplot() + geom_bar(aes(y = varprop, x = 1:4), stat = "identity") + 
+    xlab("") + geom_path(aes(y = varprop, x = 1:4)) + geom_text(aes(x = 1:4, 
+    y = varprop, label = round(varprop, 3)), vjust = 1, col = "white", 
+    size = 4) + scale_y_continuous(breaks = seq(0, 0.8, 0.2), 
+    labels = scales::percent) + scale_x_continuous(breaks = 1:4)
+```
+
+```{R}
+eigen(cor(data.numbers))
+```
+
+```{R}
+df<- data.frame(PC1 = pca.data$scores[, 1], PC2 = pca.data$scores[, 
+    2])
+ggplot(df, aes(PC1, PC2)) + geom_point()
+```
+
+```{R}
+State <- final.data$State
+pca.data$scores %>% as.data.frame %>% cbind(State, .) %>% top_n(3, 
+    Comp.1)  #highest PC1
+```
+
+```{R}
+pca.data$scores %>% as.data.frame %>% cbind(State, .) %>% top_n(3, 
+    wt = desc(Comp.1))  #lowest PC1
+```
+
+```{R}
+pca.data$scores %>% as.data.frame %>% cbind(State, .) %>% top_n(3, 
+    Comp.2)  #highest PC2
+```
+
+```{R}
+pca.data$scores %>% as.data.frame %>% cbind(State, .) %>% top_n(3, 
+    wt = desc(Comp.2))  #lowest PC2
+```
+
+```{R}
+pca.data$loadings[1:4, 1:2] %>% as.data.frame %>% rownames_to_column %>% 
+    ggplot() + geom_hline(aes(yintercept = 0), lty = 2) + geom_vline(aes(xintercept = 0), 
+    lty = 2) + ylab("PC2") + xlab("PC1") + geom_segment(aes(x = 0, 
+    y = 0, xend = Comp.1, yend = Comp.2), arrow = arrow(), col = "red") + 
+    geom_label(aes(x = Comp.1 * 1.1, y = Comp.2 * 1.1, label = rowname))
+```
+
+#I decided to run a PCA on my data to see if there was variance in my data. I used cancer rate, population, uninsurance rate in 2015, and uninsurance rate change from 2010 to 2015 as my four variables. The scree plot showed PC1 and PC2 would account for 68% of the variance in my data, so I decided to use those two. PC1 had a negative correlation for uninsured rate change and cancer rate, and a positive correlation for population in uninsured rate in 2015 and population. PC2 had a negative correlation for uninsured rate in 2015 and uninsured rate change, and a positive correlation for population and cancer rate. The scatterplot confirms that variance is greatest for PC1.The arrow plot interestingly points each variable into a different quadrant, but this makes sense considering the correlations seen from the loadings summary. Overall, it seems my questions about cancer rate and insurance coverage cannot be answered from the datasets I chose for this project.
